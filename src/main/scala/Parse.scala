@@ -21,40 +21,33 @@ class Parse extends RegexParsers {
     }
 
   def global: Parser[Section.Global] =
-    comments.? ~ ("global" ~> options) ^^ {
+    comments.? ~ (Global ~> options) ^^ {
       case comments ~ opts => Section.Global(opts, comments.filter(_.nonEmpty))
     }
 
   def defaults: Parser[Section.Defaults] =
-    comments.? ~ ("defaults" ~> options) ^^ {
+    comments.? ~ (Defaults ~> options) ^^ {
       case comments ~ opts => Section.Defaults(opts, comments.filter(_.nonEmpty))
     }
 
   def frontend: Parser[Section.Frontend] =
-    comments.? ~ ("frontend" ~> name) ~ options ^^ {
+    comments.? ~ (Frontend ~> name) ~ options ^^ {
       case (comments ~ name ~ opts) => Section.Frontend(name, opts, comments.filter(_.nonEmpty))
     }
 
   def backend: Parser[Section.Backend] =
-    comments.? ~ ("backend" ~> name) ~ options ^^ {
+    comments.? ~ (Backend ~> name) ~ options ^^ {
       case comments ~ name ~ opts =>
         Section.Backend(name, opts, comments.filter(_.nonEmpty))
     }
 
   def listener: Parser[Section.Listener] =
-    comments.? ~ ("listen" ~> name) ~ name.? ~ options ^^ {
+    comments.? ~ (Listen ~> name) ~ name.? ~ options ^^ {
       case comments ~ lname ~ addr ~ opts =>
-        val hostport = addr.flatMap {
-          _.split(":", 2) match {
-            case Array(host, port) => Some(Map(
-              "host" -> Value.Str(host),
-              "port" -> Value.Str(port)
-            ))
-            case Array(port) => Some(Map(
-              "port" -> Value.Str(port)
-            ))
-            case _ => None
-          }
+        val hostport = addr.collect {
+          case Addr(host, port) =>
+            Map("host" -> Value.Str(if (host.isEmpty) "0.0.0.0" else host),
+                "port" -> Value.Num(port.toInt))
         }
         Section.Listener(
           lname,
@@ -76,11 +69,12 @@ class Parse extends RegexParsers {
     }
 
   def stanza: Parser[String] =
-    ("global"
-     | "defaults"
-     | "frontend"
-     | "backend"
-     | "listen")
+    (Global
+     | Defaults
+     | Frontend
+     | Backend
+     | Listen
+     | Server)
 
   def name: Parser[String] =
     (ws.? ~> not(stanza) ~> id <~ ws.?) ^^ {
@@ -97,7 +91,7 @@ class Parse extends RegexParsers {
     }
 
   def num: Parser[Value.Num] =
-    ws.? ~> """\d+""".r ^^ {
+    ws.? ~> Digits ^^ {
       case len => Value.Num(len.toInt)
     }
 
@@ -114,6 +108,14 @@ class Parse extends RegexParsers {
 }
 
 object Parse {
+  val Global   = "global"
+  val Defaults = "defaults"
+  val Frontend = "frontend"
+  val Backend  = "backend"
+  val Listen   = "listen"
+  val Server   = "server"
+  val Addr = """(.*):(\d)+""".r
+  val Digits = """\d+""".r
   val DurationStr = """(\d+)(us|ms|s|m|h|d)""".r
   val ws = """\s*""".r
   val id = """[0-9A-Za-z-_.:]+""".r
