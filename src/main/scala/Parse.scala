@@ -32,12 +32,24 @@ sealed trait Section {
 
 object Section {
   abstract class Named(val name: String) extends Section
-  case class Defaults(val options: Map[String, Value]) extends Named("defaults")
-  case class Global(val options: Map[String, Value]) extends Named("global")
-  case class Frontend(name: String, options: Map[String, Value]) extends Section
-  case class Backend(name: String, options: Map[String, Value]) extends Section
-  case class Server(name: String, options: Map[String, Value]) extends Section
-  case class Listener(name: String, options: Map[String, Value]) extends Section
+  case class Defaults(val options: Map[String, Value]) extends Named("defaults") {
+    def set(value: (String, Value)) = copy(options = options + value)
+  }
+  case class Global(val options: Map[String, Value]) extends Named("global") {
+    def set(value: (String, Value)) = copy(options = options + value)
+  }
+  case class Frontend(name: String, options: Map[String, Value]) extends Section {
+    def set(value: (String, Value)) = copy(options = options + value)
+  }
+  case class Backend(name: String, options: Map[String, Value]) extends Section {
+    def set(value: (String, Value)) = copy(options = options + value)
+  }
+  case class Server(name: String, options: Map[String, Value]) extends Section {
+    def set(value: (String, Value)) = copy(options = options + value)
+  }
+  case class Listener(name: String, options: Map[String, Value]) extends Section {
+    def set(value: (String, Value)) = copy(options = options + value)
+  }
 }
 
 class Parse extends RegexParsers {
