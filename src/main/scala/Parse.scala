@@ -2,65 +2,6 @@ package harp
 
 import scala.util.parsing.combinator.RegexParsers
 
-sealed trait Value {
-  type Self <: Value
-  def comments: Option[String]
-  def withComments(cs: Option[String]): Self
-}
-object Value {
-  case class Str(
-    value: String, comments: Option[String] = None) extends Value {
-    type Self = Str
-    def withComments(cs: Option[String]) = copy(comments = cs)
-  }
-}
-
-case class Config(sections: Seq[Section]) {
-  lazy val defaults = sections find(_.name == "defaults")
-  lazy val global = sections find(_.name == "global")
-
-  def frontend(name: String) =
-    sections find {
-      case Section.Frontend(`name`, _, _) => true
-      case _ => false
-    }
-
-  def backend(name: String) =
-    sections find {
-      case Section.Backend(`name`, _, _) => true
-      case _ => false
-    }
-}
-
-sealed trait Section {
-  def name: String
-  def comments: Option[String]
-  def options: Map[String, Value]
-  def get = options.get(_)
-}
-
-object Section {
-  abstract class Named(val name: String) extends Section
-  case class Defaults(options: Map[String, Value], comments: Option[String]) extends Named("defaults") {
-    def set(value: (String, Value)) = copy(options = options + value)
-  }
-  case class Global(options: Map[String, Value], comments: Option[String]) extends Named("global") {
-    def set(value: (String, Value)) = copy(options = options + value)
-  }
-  case class Frontend(name: String, options: Map[String, Value], comments: Option[String]) extends Section {
-    def set(value: (String, Value)) = copy(options = options + value)
-  }
-  case class Backend(name: String, options: Map[String, Value], comments: Option[String]) extends Section {
-    def set(value: (String, Value)) = copy(options = options + value)
-  }
-  case class Server(name: String, options: Map[String, Value], comments: Option[String]) extends Section {
-    def set(value: (String, Value)) = copy(options = options + value)
-  }
-  case class Listener(name: String, options: Map[String, Value], comments: Option[String]) extends Section {
-    def set(value: (String, Value)) = copy(options = options + value)
-  }
-}
-
 class Parse extends RegexParsers {
 
   def ws: Parser[String] = """\s*""".r
@@ -163,47 +104,4 @@ class Parse extends RegexParsers {
 
 object Parse {
   def apply(in: String) = new Parse()(in)
-}
-
-object Main {
-  def main(a: Array[String]) {
-    val conf = Parse("""
-    |# global config goes here
-    |global
-    |  maxconn 4096
-    |  pidfile ~/tmp/haproxy-queue.pid
-    |  stats socket /tmp/haproxy.stat mode 600
-    |
-    |defaults
-    | log global
-    |  log 127.0.0.1 local0
-    |  log 127.0.0.1 local1 notice  
-    |  mode http
-    |  timeout connect 300000
-    |  timeout client 300000
-    |  timeout server 300000
-    |  option httpchk HEAD / HTTP/1.0
-    |
-    |frontend http-farm
-    |  # binds to port 9000
-    |  # then listens of course
-    |  bind *:9000
-    |  default_backend app1latest
-    |  acl url_tag02 path_beg /tag02/
-    |  use_backend tagged-02 if url_tag02
-    |
-    |backend app1latest
-    |  balance roundrobin
-    |  server localhost_9001 localhost:9001
-    |
-    |listen haproxyapp_admin:9100 127.0.0.1:9100
-    |  mode http
-    |  stats uri /""".stripMargin)
-
-    for {
-      cfg  <- conf
-      fe   <- cfg.frontend("http-farm")
-      opt <- fe.get("acl")
-    } println(opt)
-  }
 }
