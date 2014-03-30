@@ -10,11 +10,24 @@ object Value {
 case class Config(sections: Seq[Section]) {
   lazy val defaults = sections find(_.name == "defaults")
   lazy val global = sections find(_.name == "global")
+
+  def frontend(name: String) =
+    sections find {
+      case Section.Frontend(`name`, _) => true
+      case _ => false
+    }
+
+  def backend(name: String) =
+    sections find {
+      case Section.Backend(`name`, _) => true
+      case _ => false
+    }
 }
 
 sealed trait Section {
   def name: String
   def options: Map[String, Value]
+  def get = options.get(_)
 }
 
 object Section {
@@ -116,7 +129,7 @@ object Parse {
 
 object Main {
   def main(a: Array[String]) {
-    println(Parse("""
+    val conf = Parse("""
     |global
     |  maxconn 4096
     |  pidfile ~/tmp/haproxy-queue.pid
@@ -141,8 +154,15 @@ object Main {
     |backend app1latest
     |  balance roundrobin
     |  server localhost_9001 localhost:9001
+    |
     |listen haproxyapp_admin:9100 127.0.0.1:9100
     |  mode http
-    |  stats uri /""".stripMargin))
+    |  stats uri /""".stripMargin)
+
+    for {
+      cfg  <- conf
+      fe   <- cfg.frontend("http-farm")
+      bind <- fe.get("bind")
+    } println(bind)
   }
 }
