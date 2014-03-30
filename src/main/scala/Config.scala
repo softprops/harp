@@ -1,5 +1,9 @@
 package harp
 
+object Config {
+  def fromStr(in: String): Option[Config] = Parse(in)
+}
+
 case class Config(sections: Seq[Section]) {
   lazy val defaults = sections find(_.name == Parse.Defaults)
 
