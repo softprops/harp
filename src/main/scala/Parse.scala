@@ -94,6 +94,9 @@ class Parse extends RegexParsers {
               "host" -> Value.Str(host),
               "port" -> Value.Str(port)
             ))
+            case Array(port) => Some(Map(
+              "port" -> Value.Str(port)
+            ))
             case _ => None
           }
         }
