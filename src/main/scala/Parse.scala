@@ -77,14 +77,17 @@ class Parse extends RegexParsers {
 
   def listener: Parser[Section.Listener] =
     ("listen" ~> name) ~ name.? ~ options ^^ {
-      case (lname ~ hostport ~ opts) =>
-        val hostportOpts = hostport.map(_.split(":", 2) match {
-          case Array(host, port) =>
-            Map("host" -> Value.Str(host),
-                "port" -> Value.Str(port))
-          case _ => Map.empty[String, Value]
-        }).getOrElse(Map.empty[String, Value])
-        Section.Listener(lname, opts ++ hostportOpts)
+      case (lname ~ addr ~ opts) =>        
+        val hostport = addr.flatMap {
+          _.split(":", 2) match {
+            case Array(host, port) => Some(Map(
+              "host" -> Value.Str(host),
+              "port" -> Value.Str(port)
+            ))
+            case _ => None
+          }
+        }
+        Section.Listener(lname, opts ++ hostport.getOrElse(Map.empty[String, Value]))
     }
 
   //def server: Parser[Server] = */
