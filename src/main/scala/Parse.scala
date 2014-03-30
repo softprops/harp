@@ -2,9 +2,17 @@ package harp
 
 import scala.util.parsing.combinator.RegexParsers
 
-sealed trait Value
+sealed trait Value {
+  type Self <: Value
+  def comments: Option[String]
+  def withComments(cs: Option[String]): Self
+}
 object Value {
-  case class Str(value: String) extends Value
+  case class Str(
+    value: String, comments: Option[String] = None) extends Value {
+    type Self = Str
+    def withComments(cs: Option[String]) = copy(comments = cs)
+  }
 }
 
 case class Config(sections: Seq[Section]) {
@@ -13,41 +21,42 @@ case class Config(sections: Seq[Section]) {
 
   def frontend(name: String) =
     sections find {
-      case Section.Frontend(`name`, _) => true
+      case Section.Frontend(`name`, _, _) => true
       case _ => false
     }
 
   def backend(name: String) =
     sections find {
-      case Section.Backend(`name`, _) => true
+      case Section.Backend(`name`, _, _) => true
       case _ => false
     }
 }
 
 sealed trait Section {
   def name: String
+  def comments: Option[String]
   def options: Map[String, Value]
   def get = options.get(_)
 }
 
 object Section {
   abstract class Named(val name: String) extends Section
-  case class Defaults(val options: Map[String, Value]) extends Named("defaults") {
+  case class Defaults(options: Map[String, Value], comments: Option[String]) extends Named("defaults") {
     def set(value: (String, Value)) = copy(options = options + value)
   }
-  case class Global(val options: Map[String, Value]) extends Named("global") {
+  case class Global(options: Map[String, Value], comments: Option[String]) extends Named("global") {
     def set(value: (String, Value)) = copy(options = options + value)
   }
-  case class Frontend(name: String, options: Map[String, Value]) extends Section {
+  case class Frontend(name: String, options: Map[String, Value], comments: Option[String]) extends Section {
     def set(value: (String, Value)) = copy(options = options + value)
   }
-  case class Backend(name: String, options: Map[String, Value]) extends Section {
+  case class Backend(name: String, options: Map[String, Value], comments: Option[String]) extends Section {
     def set(value: (String, Value)) = copy(options = options + value)
   }
-  case class Server(name: String, options: Map[String, Value]) extends Section {
+  case class Server(name: String, options: Map[String, Value], comments: Option[String]) extends Section {
     def set(value: (String, Value)) = copy(options = options + value)
   }
-  case class Listener(name: String, options: Map[String, Value]) extends Section {
+  case class Listener(name: String, options: Map[String, Value], comments: Option[String]) extends Section {
     def set(value: (String, Value)) = copy(options = options + value)
   }
 }
@@ -58,6 +67,8 @@ class Parse extends RegexParsers {
 
   def id: Parser[String] = """[0-9A-Za-z-_.:]+""".r
 
+  def comment: Parser[String] = """#.+""".r
+
   def config: Parser[Config] = section.* ^^ {
     case sections => Config(sections)
   }
@@ -65,29 +76,36 @@ class Parse extends RegexParsers {
   def section: Parser[Section] =
     global | defaults | frontend | backend | listener
 
+  def comments: Parser[String] =
+    comment.* ^^ {
+      case lines =>
+        lines.map(_.drop(1).dropWhile(_ == ' ')).mkString("\n")
+    }
+
   def global: Parser[Section.Global] =
-    ("global" ~> options) ^^ {
-      case opts => Section.Global(opts)
+    comments.? ~ ("global" ~> options) ^^ {
+      case comments ~ opts => Section.Global(opts, comments.filter(_.nonEmpty))
     }
 
   def defaults: Parser[Section.Defaults] =
-    ("defaults" ~> options) ^^ {
-      case opts => Section.Defaults(opts)
+    comments.? ~ ("defaults" ~> options) ^^ {
+      case comments ~ opts => Section.Defaults(opts, comments.filter(_.nonEmpty))
     }
 
   def frontend: Parser[Section.Frontend] =
-    ("frontend" ~> name) ~ options ^^ {
-      case (name ~ opts) => Section.Frontend(name, opts)
+    comments.? ~ ("frontend" ~> name) ~ options ^^ {
+      case (comments ~ name ~ opts) => Section.Frontend(name, opts, comments.filter(_.nonEmpty))
     }
 
   def backend: Parser[Section.Backend] =
-    ("backend" ~> name) ~ options ^^ {
-      case (name ~ opts) => Section.Backend(name, opts)
+    comments.? ~ ("backend" ~> name) ~ options ^^ {
+      case comments ~ name ~ opts =>
+        Section.Backend(name, opts, comments.filter(_.nonEmpty))
     }
 
   def listener: Parser[Section.Listener] =
-    ("listen" ~> name) ~ name.? ~ options ^^ {
-      case (lname ~ addr ~ opts) =>        
+    comments.? ~ ("listen" ~> name) ~ name.? ~ options ^^ {
+      case comments ~ lname ~ addr ~ opts =>
         val hostport = addr.flatMap {
           _.split(":", 2) match {
             case Array(host, port) => Some(Map(
@@ -100,7 +118,10 @@ class Parse extends RegexParsers {
             case _ => None
           }
         }
-        Section.Listener(lname, opts ++ hostport.getOrElse(Map.empty[String, Value]))
+        Section.Listener(
+          lname,
+          opts ++ hostport.getOrElse(Map.empty[String, Value]),
+          comments.filter(_.nonEmpty))
     }
 
   //def server: Parser[Server] = */
@@ -111,8 +132,9 @@ class Parse extends RegexParsers {
     }
 
   def option: Parser[(String, Value)] =
-    name ~ value ^^ {
-      case (name ~ value) => (name, value)
+    comments.? ~ name ~ value ^^ {
+      case comments ~ name ~ value =>
+        (name, value.withComments(comments.filter(_.nonEmpty)))
     }
 
   def stanza: Parser[String] =
@@ -146,6 +168,7 @@ object Parse {
 object Main {
   def main(a: Array[String]) {
     val conf = Parse("""
+    |# global config goes here
     |global
     |  maxconn 4096
     |  pidfile ~/tmp/haproxy-queue.pid
@@ -162,6 +185,8 @@ object Main {
     |  option httpchk HEAD / HTTP/1.0
     |
     |frontend http-farm
+    |  # binds to port 9000
+    |  # then listens of course
     |  bind *:9000
     |  default_backend app1latest
     |  acl url_tag02 path_beg /tag02/
@@ -178,7 +203,7 @@ object Main {
     for {
       cfg  <- conf
       fe   <- cfg.frontend("http-farm")
-      bind <- fe.get("bind")
-    } println(bind)
+      opt <- fe.get("acl")
+    } println(opt)
   }
 }
