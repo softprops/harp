@@ -1,6 +1,8 @@
 package harp
 
+import scala.concurrent.duration.Duration
 import scala.util.parsing.combinator.RegexParsers
+import java.util.concurrent.TimeUnit
 
 class Parse extends RegexParsers {
 
@@ -9,6 +11,10 @@ class Parse extends RegexParsers {
   def id: Parser[String] = """[0-9A-Za-z-_.:]+""".r
 
   def comment: Parser[String] = """#.+""".r
+
+  val Dur = """(\d+)(us|ms|s|m|h|d)""".r
+
+  def durationStr: Parser[String] = Dur
 
   def config: Parser[Config] = section.* ^^ {
     case sections => Config(sections)
@@ -91,6 +97,20 @@ class Parse extends RegexParsers {
     }
 
   def value: Parser[Value] =
+    duration | num | str
+
+  def duration: Parser[Value.Duration] =
+    ws.? ~> durationStr ^^ {
+      case Dur(len, unit) =>
+        Value.Duration(Duration(len.toLong, Parse.Durations(unit)))
+    }
+
+  def num: Parser[Value.Num] =
+    ws.? ~> """\d+""".r ^^ {
+      case len => Value.Num(len.toInt)
+    }
+
+  def str: Parser[Value.Str] =
     ws.? ~> ".+".r ^^ {
       case chars => Value.Str(chars.mkString(""))
     }
@@ -103,5 +123,12 @@ class Parse extends RegexParsers {
 }
 
 object Parse {
+  val Durations = Map(
+    "us" -> TimeUnit.MICROSECONDS,
+    "ms" -> TimeUnit.MILLISECONDS,
+    "s" -> TimeUnit.SECONDS,
+    "m" -> TimeUnit.MINUTES,
+    "h" -> TimeUnit.HOURS,
+    "d" -> TimeUnit.DAYS)
   def apply(in: String) = new Parse()(in)
 }
