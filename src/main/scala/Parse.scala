@@ -56,8 +56,6 @@ class Parse extends RegexParsers {
 
   def ws: Parser[String] = """\s*""".r
 
-  def any: Parser[String] = """.|(\r?\n)+""".r
-
   def id: Parser[String] = """[0-9A-Za-z-_.:]+""".r
 
   def config: Parser[Config] = section.* ^^ {
