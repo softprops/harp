@@ -7,19 +7,24 @@ object Value {
   case class Str(value: String) extends Value
 }
 
-sealed trait Config {
+case class Config(sections: Seq[Section]) {
+  lazy val defaults = sections find(_.name == "defaults")
+  lazy val global = sections find(_.name == "global")
+}
+
+sealed trait Section {
   def name: String
   def options: Map[String, Value]
 }
 
-object Config {
-  abstract class Named(val name: String) extends Config
+object Section {
+  abstract class Named(val name: String) extends Section
   case class Defaults(val options: Map[String, Value]) extends Named("defaults")
   case class Global(val options: Map[String, Value]) extends Named("global")
-  case class Frontend(name: String, options: Map[String, Value]) extends Config
-  case class Backend(name: String, options: Map[String, Value]) extends Config
-  case class Server(name: String, options: Map[String, Value]) extends Config
-  case class Listener(name: String, options: Map[String, Value]) extends Config
+  case class Frontend(name: String, options: Map[String, Value]) extends Section
+  case class Backend(name: String, options: Map[String, Value]) extends Section
+  case class Server(name: String, options: Map[String, Value]) extends Section
+  case class Listener(name: String, options: Map[String, Value]) extends Section
 }
 
 class Parse extends RegexParsers {
@@ -30,32 +35,34 @@ class Parse extends RegexParsers {
 
   def id: Parser[String] = """[0-9A-Za-z-_.:]+""".r
 
-  def configs: Parser[Seq[Config]] = config.*
+  def config: Parser[Config] = section.* ^^ {
+    case sections => Config(sections)
+  }
 
-  def config: Parser[Config] =
+  def section: Parser[Section] =
     global | defaults | frontend | backend | listener
 
-  def global: Parser[Config.Global] =
+  def global: Parser[Section.Global] =
     ("global" ~> options) ^^ {
-      case opts => Config.Global(opts)
+      case opts => Section.Global(opts)
     }
 
-  def defaults: Parser[Config.Defaults] =
+  def defaults: Parser[Section.Defaults] =
     ("defaults" ~> options) ^^ {
-      case opts => Config.Defaults(opts)
+      case opts => Section.Defaults(opts)
     }
 
-  def frontend: Parser[Config.Frontend] =
+  def frontend: Parser[Section.Frontend] =
     ("frontend" ~> name) ~ options ^^ {
-      case (name ~ opts) => Config.Frontend(name, opts)
+      case (name ~ opts) => Section.Frontend(name, opts)
     }
 
-  def backend: Parser[Config.Backend] =
+  def backend: Parser[Section.Backend] =
     ("backend" ~> name) ~ options ^^ {
-      case (name ~ opts) => Config.Backend(name, opts)
+      case (name ~ opts) => Section.Backend(name, opts)
     }
 
-  def listener: Parser[Config.Listener] =
+  def listener: Parser[Section.Listener] =
     ("listen" ~> name) ~ name.? ~ options ^^ {
       case (lname ~ hostport ~ opts) =>
         val hostportOpts = hostport.map(_.split(":", 2) match {
@@ -64,7 +71,7 @@ class Parse extends RegexParsers {
                 "port" -> Value.Str(port))
           case _ => Map.empty[String, Value]
         }).getOrElse(Map.empty[String, Value])
-        Config.Listener(lname, opts ++ hostportOpts)
+        Section.Listener(lname, opts ++ hostportOpts)
     }
 
   //def server: Parser[Server] = */
@@ -97,7 +104,7 @@ class Parse extends RegexParsers {
     }
 
   def apply(in: String) =
-    parseAll(configs, in) match {
+    parseAll(config, in) match {
       case success if (success.successful) => Some(success.get)
       case failure => None
     }
