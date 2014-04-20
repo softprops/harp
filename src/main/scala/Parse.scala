@@ -82,7 +82,13 @@ class Parse extends RegexParsers {
     }
 
   def value: Parser[Value] =
-    duration | num | str
+    mode | duration | num | str
+
+  def mode: Parser[Value.Mode] =
+    ws.? ~> ModeStr ^^ {
+      case ModeStr(str) =>
+        Value.Mode(str)
+    }
 
   def duration: Parser[Value.Duration] =
     ws.? ~> DurationStr ^^ {
@@ -117,6 +123,7 @@ object Parse {
   val Addr = """(.*):(\d)+""".r
   val Digits = """\d+""".r
   val DurationStr = """(\d+)(us|ms|s|m|h|d)""".r
+  val ModeStr = """(tcp|http|health)""".r
   val ws = """\s*""".r
   val id = """[0-9A-Za-z-_.:]+""".r
   val comment = """#.+""".r

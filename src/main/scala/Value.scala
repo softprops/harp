@@ -26,4 +26,10 @@ object Value {
     type Self = Duration
     def withComments(cs: Option[String]) = copy(comments = cs)
   }
+
+  case class Mode(
+    value: String, comments: Option[String] = None) extends Value {
+    type Self = Mode
+    def withComments(cs: Option[String] = None) = copy(comments = cs)
+  }
 }
